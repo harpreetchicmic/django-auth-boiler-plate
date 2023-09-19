@@ -8,16 +8,16 @@ from django.db import transaction
 from django.contrib.auth.models import Group,User
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
-from django.utils.http import (
-    url_has_allowed_host_and_scheme, urlsafe_base64_decode,
-)
-from commonConf.baseViewSet import nBaseViewset, vBaseViewset
+from django.utils.http import  urlsafe_base64_decode
+from commonConf.baseViewSet import nBaseViewset, vBaseViewset , aBaseViewset
 from commonConf.passwordValidator import password_check
-from commonConf.send_email import send_welcome_mail
+from commonConf.send_email import send_welcome_mail, send_welcome_mail_with_otp
 from sitepanel.authentications.signup.serializers import UserSerializers
 from sitepanel.models import UserProfile
+from commonConf.const import *
+from commonConf.common import api_response , regex
 import re
-
+import random
 from commonConf.common import regex
 
 class AuthSignupViewset(nBaseViewset):
@@ -36,63 +36,52 @@ class AuthSignupViewset(nBaseViewset):
                     if self.profileQuerySet.get(ref_user=user).verified == False:
                         user.delete()
                     else:
-                        return Response(
-                                {"message": "This email address is already being used",
-                                    "status": False,
-                                    "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
-                    regex = regex
-                    if str(email) == "" or not (re.fullmatch(regex, email)):
-                        return Response({"message":"Please enter valid email address.",
-                                "status": False,
-                                "response": "fail"}, status=status.HTTP_400_BAD_REQUEST)
+                        return api_response(EMAIL_ALREADY_USED , False , FAIL , status.HTTP_400_BAD_REQUEST)
+                    email_regex = regex
+                    if str(email) == "" or not (re.fullmatch(email_regex, email)):
+                        return api_response(ENTER_VALID_EMAIL , False , FAIL , status.HTTP_400_BAD_REQUEST)
              
                 password_validate= password_check(data["password"])
                 if not password_validate['status']: 
                     return Response(
                         {"message":password_validate['message'],
                             "status": password_validate['status'],
-                            "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+                            "response": FAIL, }, status=status.HTTP_400_BAD_REQUEST)
                 try:
                     if self.queryset.filter(username=data["username"]).exists():
-                        return Response(
-                                {"message": "This username is already being used",
-                                    "status": False,
-                                    "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+                        return api_response(USERNAME_ALREADY_USED , False , FAIL , status.HTTP_400_BAD_REQUEST)
                 except:
                     pass
 
                 userData =self.queryset.create(
-                    username =   data["username"],
-                    email = email,
+                    username   =   data["username"],
+                    email      = email,
                     first_name =  data["first_name"],
-                    last_name =  data["last_name"],
-                    is_active = True,
+                    last_name  =  data["last_name"],
+                    is_active  = True,
                 )
                 userData.set_password(data["password"])
                 userData.save()
-                userprofile=UserProfile.objects.create(ref_user=userData,verified=0)
-                context1 = {
-                    "subject": "welcome mail",
-                    "username": userData.username,
-                    "email": userData.email,
-                    "uid": urlsafe_b64encode(force_bytes(userData.pk)),
-                    "user": userData,
-                    'token': default_token_generator.make_token(userData),
-                    'protocol': 'http',
-                    "url": request._current_scheme_host+'/api/app/auth/verifyuser/'+urlsafe_b64encode(force_bytes(userData.pk)).decode('utf-8') +'/'+default_token_generator.make_token(userData) + "/",
-                }
-                t = threading.Thread(target=send_welcome_mail, args=[
-                    userData.email, context1])
-                t.setDaemon(True)
-                t.start()               
-                group = Group.objects.get(
-                                    name='user')
+                
+                #entry in user profile table 
+                user_profile_obj = UserProfile.objects.create(ref_user=userData,verified=0)
+                """
+                below is the code which contains URL and function which sends the mail containing uid and token in url , 
+                User is verified on the behalf of corresponding token and uid
+                """
+                # url = request._current_scheme_host+'/api/app/auth/verifyuser/'+urlsafe_b64encode(force_bytes(userdata.pk)).decode('utf-8') +'/'+default_token_generator.make_token(userData) + "/"     
+                #send_mail_with_url_containing_uid_and_token(userData , url)     
+                """
+                below function sends otp in mail 
+                front end will try to hit verifyUserWithOtp end point API  which verifies the user on the behalf of the otp 
+                """     
+                send_mail_with_otp(userData , user_profile_obj)
+
+                group = Group.objects.get(name='user')
                 group.user_set.add(userData)
-                return Response({"email":request.data['email'],"message": "Your registration has been successfully completed.You have just been sent a mail containing verification link.",
-                "status": True, "response": "success", }, status=status.HTTP_200_OK)
+                return api_response(REGT_SUCCESS_MAIL_SENT , True , SUCCESS , status.HTTP_200_OK , {"email":email})
         except Exception as error:
-            return Response({"message":str(error), "status": False,
-                             "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(str(error), False , FAIL , status.HTTP_400_BAD_REQUEST)
              
 
 class UserVerification(vBaseViewset):
@@ -128,5 +117,67 @@ class UserVerification(vBaseViewset):
                 return Response({"message":str(error), "status": False,
                                 "response": "fail", }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as error:
-                return Response({"message":str(error), "status": False,
-                                "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(str(error), False , FAIL , status.HTTP_400_BAD_REQUEST)
+
+
+def send_mail_with_url_containing_uid_and_token(userdata , url):
+    """
+    below is the function to send the mail with uid and token in url
+    """
+    context1 = {
+                    "subject": "welcome mail",
+                    "username": userdata.username,
+                    "email": userdata.email,
+                    "uid": urlsafe_b64encode(force_bytes(userdata.pk)),
+                    "user": userdata,
+                    'token': default_token_generator.make_token(userdata),
+                    'protocol': 'http',
+                    "url": url
+                }
+    t = threading.Thread(target=send_welcome_mail, args=[userdata.email, context1])
+    t.setDaemon(True)
+    t.start()       
+
+def send_mail_with_otp(userdata,user_profile):
+    """
+    below is the function to send the otp in mail
+    """
+    otp = random.randint(1000, 9999)
+    user_profile.otp = otp
+    user_profile.save()
+    context1 = {
+                    "subject": "welcome mail",
+                    "username": userdata.username,
+                    "email": userdata.email,
+                    "user": userdata,
+                    'protocol': 'http',
+                    'otp':otp,
+                }
+    t = threading.Thread(target=send_welcome_mail_with_otp, args=[userdata.email, context1])
+    t.setDaemon(True)
+    t.start()
+
+class UserVerifictionWithOTP(aBaseViewset):
+    queryset = UserProfile.objects
+    http_method_names = ['post']
+
+    def create(self, request, *args, **kwargs):
+        try:
+            otp_filled      = int(request.data['otp'])
+            email         = request.data['email']
+            user= User.objects.get(email = email)
+            user_profile = self.queryset.get(ref_user_id = user.id)
+            user_actual_otp = user_profile.otp
+            with transaction.atomic():
+                if otp_filled == user_actual_otp:
+                    user_profile.verified = True
+                    user_profile.save()
+                    return api_response(USER_VERIFIED, True , SUCCESS , status.HTTP_200_OK)
+                else:
+                    return api_response(ENTER_VALID_OTP, False , FAIL , status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return api_response(ENTER_VALID_EMAIL, False , FAIL , status.HTTP_400_BAD_REQUEST)
+        except UserProfile.DoesNotExist:
+            return api_response(ENTER_VALID_USER_ID, False , FAIL , status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return api_response(str(error), False , FAIL , status.HTTP_400_BAD_REQUEST)

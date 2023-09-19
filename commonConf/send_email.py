@@ -24,5 +24,13 @@ def send_welcome_mail(to, context):
     msg.attach_alternative(html_content, 'text/html')
     msg.send()
 
+def send_welcome_mail_with_otp(to, context):
+    template = 'email/welcome_mail_with_otp.html'
+    html_content = render_to_string(template, context)
+
+    msg = EmailMultiAlternatives(context['subject'], "", settings.DEFAULT_FROM_EMAIL, [to])
+    msg.attach_alternative(html_content, 'text/html')
+    msg.send()
+
 
 

@@ -8,7 +8,8 @@ from commonConf.baseViewSet import aBaseViewset
 from commonConf.passwordValidator import password_check
 from sitepanel.authentications.resetpassword.serializers import PasswordResetSerializer
 User = get_user_model()
-
+from  commonConf.common import api_response
+from  commonConf.const import *
 
 
 class ResetPassword(aBaseViewset):
@@ -21,37 +22,23 @@ class ResetPassword(aBaseViewset):
         try:
             old_password = request.data['old_password']
             new_password = request.data['new_password']
-            try:
-                with transaction.atomic():
-                    password_validate= password_check(new_password)
-                    if not password_validate['status']: 
-                        return Response(
-                            {"message":password_validate['message'],
-                                "status": password_validate['status'],
-                                "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
-                    if request.user.check_password(old_password):
-                        user=User.objects.get(id=request.user.id)
-                        user.set_password(new_password)
-                        user.save()
-                        return Response({
-                        "message": "Password changed successfully",
-                        "status": True,
-                        "response": "success", }, status=status.HTTP_201_CREATED)
-                    return Response({
-                        "message": " Old password doesn't match",
-                        "status": False,
-                        "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
-                    
-            except Exception as error:
-                    return Response({
-                        "message": str(error),
-                        "status": False,
-                        "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+           
+            with transaction.atomic():
+                password_validate= password_check(new_password)
+                if not password_validate['status']: 
+                    return Response(
+                        {"message":password_validate['message'],
+                            "status": password_validate['status'],
+                            "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+                if request.user.check_password(old_password):
+                    user=User.objects.get(id=request.user.id)
+                    user.set_password(new_password)
+                    user.save()
+                    return api_response(PASWRD_CHANGE_SUCCESS , True , SUCCESS , status.HTTP_201_CREATED)
+                return api_response(OLD_PASS_NOT_MATCHED , False , FAIL , status.HTTP_400_BAD_REQUEST)
         except Exception as error:
-                    return Response({
-                        "message": str(error),
-                        "status": False,
-                        "response": "fail", }, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(str(error) , False , FAIL , status.HTTP_400_BAD_REQUEST)
+
                     
                     
 

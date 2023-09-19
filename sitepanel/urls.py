@@ -3,7 +3,7 @@ from django.urls import path
 from sitepanel.authentications.forgotpassword.forgotpassword import ChangePassword, ConfirmPassword, ForgotPasswordMail
 from sitepanel.authentications.login.views import AuthLoginViewset, AuthLogoutViewset, getEmailSocialLogin
 from sitepanel.authentications.resetpassword.resetpassword import ResetPassword
-from sitepanel.authentications.signup.views import AuthSignupViewset, UserVerification
+from sitepanel.authentications.signup.views import AuthSignupViewset, UserVerification, UserVerifictionWithOTP
 from sitepanel.views import ManageProfile
 router = routers.DefaultRouter()
 
@@ -15,7 +15,7 @@ router.register(r'auth/resetpassword', ResetPassword)
 router.register(r'auth/forgotpassword',ForgotPasswordMail)
 router.register(r'auth/ConfirmPassword',ConfirmPassword)
 router.register(r'auth/ManageProfile',ManageProfile)
-
+router.register(r'auth/verifyuserwithotp',UserVerifictionWithOTP)
 
 urlpatterns = [
     path('auth/verifyuser/<uid>/<token>/',UserVerification.as_view({'get':'list'}),name="userverification"),
